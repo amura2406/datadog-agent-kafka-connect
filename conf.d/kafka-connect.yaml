@@ -1,0 +1,7 @@
+init_config:
+    default_timeout: 5
+    connector_name: ksstg
+
+instances:
+    -   url: http://localhost:8083/connectors/
+
