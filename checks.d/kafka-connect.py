@@ -13,10 +13,24 @@ class HTTPCheck(AgentCheck):
         # Load values from the instance configuration
         base_url = instance['url']
         default_timeout = self.init_config.get('default_timeout', 5)
-        connector_name = self.init_config.get('connector_name', 'ks')
-        url = "%s%s/status" % (base_url, connector_name)
         timeout = float(instance.get('timeout', default_timeout))
 
+        connectors = self.list_all_connectors(base_url, timeout=timeout)
+
+        for conn in connectors:
+            self.check_connector_status(base_url, conn, timeout=timeout)
+
+    def list_all_connectors(self, url, timeout):
+        try:
+            r = requests.get(url, timeout=timeout)
+            return r.json()
+        except requests.exceptions.Timeout as e:
+            # If there's a timeout
+            self.timeout_event(url, timeout, aggregation_key)
+            return []
+
+    def check_connector_status(self, base_url, connector_name, timeout):
+        url = "%s%s/status" % (base_url, connector_name)
         # Use a hash of the URL as an aggregation key
         aggregation_key = md5(url).hexdigest()
 
@@ -34,7 +48,7 @@ class HTTPCheck(AgentCheck):
             self.status_code_event(url, r, aggregation_key)
 
         timing = end_time - start_time
-        self.success_event(url, r, aggregation_key)
+        self.success_event(r, connector_name, aggregation_key)
 
     def timeout_event(self, url, timeout, aggregation_key):
         self.event({
@@ -54,8 +68,7 @@ class HTTPCheck(AgentCheck):
             'aggregation_key': aggregation_key
         })
 
-    def success_event(self, url, r, aggregation_key):
-        connector_name = self.init_config.get('connector_name', 'ks')
+    def success_event(self, r, connector_name, aggregation_key):
         resp_json = r.json()
         task_status = resp_json['tasks'][0]['state']
         alert_type = 'success'
